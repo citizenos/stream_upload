@@ -8,14 +8,20 @@ Install
 ##Usage
 
 ```javascript
-var streamUpload = require('stream_upload');
-streamUpload.init({
+var StreamUpload = require('stream_upload');
+streamUpload = new StreamUpload({
     extensions: [], // eg. ['jpeg', 'jpg', 'png']
     types: [], // ['image/jpeg']
     maxSize: 0, // 50000 -> max file size in bytes
     baseFolder: '', // 'myFolder'
     storage: {} // storage config variables
 });
+/**/
+var params = {
+    size: {filesize in bytes},
+    type: {file mime-type}, filename}
+    filename: {my desired filename} // can also be path /path/to/filename.ext
+streamUpload.upload(ReadStream, params);
 ```
 
 default storage is local
