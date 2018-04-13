@@ -1,6 +1,6 @@
 {
   "name": "stream_upload",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Node.js library to stream files to several storage locations (s3, local ...)",
   "main": "index",
   "scripts": {
