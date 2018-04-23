@@ -24,6 +24,7 @@ function StreamUpload (options) {
         baseFolder: '',
         storage: {}
     };
+    that.size = 0;
 
     var __parseExtensions = function () {
         that.settings.allowedExt.forEach(function (ext) {
@@ -121,31 +122,35 @@ function StreamUpload (options) {
     };
 
     var __checkFile = function (fileParams) {
-        if (!fileParams) {
-            return false;
-        }
-        var fileSizeValid = __checkFileSize(fileParams.size);
+        var error;
+
+        var fileSizeValid = __checkFileSize(that.size);
         if (fileSizeValid === true) {
             var fileTypeValid = __checkFileType(fileParams.type);
             if (!fileTypeValid) {
-                return new Error('File type is invalid');
+                error = new Error('File type is invalid');
+                error.type = 'fileType';
+                error.statusCode = 403;
+                return error;
             }
 
             return fileTypeValid;
         } else {
-            return new Error('File size is invalid');
+            error = new Error('File size is invalid');
+            error.type = 'fileSize';
+            error.statusCode = 403;
+            return error;
         }
     };
 
     var __uploadToS3 = function (inputStream, params) {
-        var filename = params.filename || path.join(that.settings.baseFolder, uuid.v4());
-
-        AWS.config.update({accessKeyId: that.settings.storage.accessKeyId, secretAccessKey: that.settings.storage.secretAccessKey, region: that.settings.storage.region});
+        var config = {accessKeyId: that.settings.storage.accessKeyId, secretAccessKey: that.settings.storage.secretAccessKey, region: that.settings.storage.region};
+        AWS.config.update(config);
         var s3 = new AWS.S3({params: {Bucket: that.settings.storage.bucket}});
 
         return new Promise(function (resolve, reject) {
-            return s3
-                .upload({Key: filename, Body: inputStream, ACL: 'public-read'})
+            var uploader = s3
+                .upload({Key: that.filename, Body: inputStream, ACL: 'public-read'})
                 .promise()
                 .then(function (data) {
                     return resolve(data.Location);
@@ -153,30 +158,50 @@ function StreamUpload (options) {
                     return reject(err);
                 });
         });
-
-
     };
 
     var __uploadToLocal = function (inputStream, params) {
         return new Promise(function (resolve, reject) {
-            var filename = params.filename || path.join(that.settings.baseFolder, uuid.v4());
             // Make sure the output directory is there.
-            fsExt.ensureDirSync(path.dirname(filename));
+            fsExt.ensureDirSync(path.dirname(that.filename));
 
-            var wr = fs.createWriteStream(filename);
+            var wr = fs.createWriteStream(that.filename);
             wr.on('error', function (err) {
                 return reject(err);
             });
             wr.on('finish', function () {
-                return resolve(filename);
+                return resolve(that.filename);
             });
 
             inputStream.pipe(wr);
         });
     };
 
+    var __sizeGetter = function (data) {
+        that.size += data.length;
+    }
+    var __deletePartials = function () {
+        if (that.settings.storage.type && that.settings.storage.type.toLowerCase() === 's3') {
+            var config = {accessKeyId: that.settings.storage.accessKeyId, secretAccessKey: that.settings.storage.secretAccessKey, region: that.settings.storage.region};
+            AWS.config.update(config);
+            var s3 = new AWS.S3({params: {Bucket: that.settings.storage.bucket}});
+            s3
+                .deleteObject({Key: that.filename})
+        } else {
+            fs.unlink(that.filename);
+        }
+    }
     var __upload = function (stream, params) {
-        var checkValid = __checkFile(params);
+        var checkValid;
+        that.filename = params.filename || path.join(that.settings.baseFolder, uuid.v4());
+        if (that.settings.storage.type && that.settings.storage.type.toLowerCase() === 's3') {
+            stream.on('data', __sizeGetter);
+            checkValid = __checkFile(params);
+            stream.removeListener('data', __sizeGetter);
+        } else {
+            checkValid = __checkFile(params);
+        }
+        
         if (checkValid === true) {
             if (that.settings.storage.type && that.settings.storage.type.toLowerCase() === 's3') {
                 return __uploadToS3(stream, params);
@@ -184,9 +209,8 @@ function StreamUpload (options) {
                 return __uploadToLocal(stream, params);
             }
         } else {
-            return new Promise(function (resolve, reject) {
-                return reject(checkValid);
-            });
+            __deletePartials(params)
+            return stream.emit('error', checkValid);
         }
     };
 
@@ -200,7 +224,8 @@ function StreamUpload (options) {
         setStorage: __setStorage,
         checkFile: __checkFile,
         checkFileSize: __checkFileSize,
-        checkFileType: __checkFileType
+        checkFileType: __checkFileType,
+        deletePartials: __deletePartials
     };
 }
 
