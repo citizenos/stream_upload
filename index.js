@@ -195,11 +195,11 @@ function StreamUpload (options) {
         var checkValid;
         that.filename = params.filename || path.join(that.settings.baseFolder, uuid.v4());
         if (that.settings.storage.type && that.settings.storage.type.toLowerCase() === 's3') {
+            checkValid = __checkFile(params);
+        } else {
             stream.on('data', __sizeGetter);
             checkValid = __checkFile(params);
             stream.removeListener('data', __sizeGetter);
-        } else {
-            checkValid = __checkFile(params);
         }
         
         if (checkValid === true) {
