@@ -111,6 +111,8 @@ function StreamUpload (options) {
 
             return false;
         }
+
+        return true;
     };
 
     var __checkFileSize = function (size) {
@@ -128,7 +130,7 @@ function StreamUpload (options) {
         if (fileSizeValid === true) {
             var fileTypeValid = __checkFileType(fileParams.type);
             if (!fileTypeValid) {
-                error = new Error('File type is invalid');
+                error = new Error('File type ' + fileParams.type + ' is invalid');
                 error.type = 'fileType';
                 error.statusCode = 403;
                 return error;
@@ -136,7 +138,7 @@ function StreamUpload (options) {
 
             return fileTypeValid;
         } else {
-            error = new Error('File size is invalid');
+            error = new Error('File size: ' + that.size + ' is invalid');
             error.type = 'fileSize';
             error.statusCode = 403;
             return error;
@@ -230,3 +232,4 @@ function StreamUpload (options) {
 }
 
 module.exports = StreamUpload;
+
