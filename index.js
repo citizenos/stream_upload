@@ -181,7 +181,9 @@ function StreamUpload (options) {
             s3
                 .deleteObject({Key: that.filename})
         } else {
+          if (fs.existsSync(that.filename)) {
             fs.unlink(that.filename);
+          }
         }
     }
 
