@@ -102,7 +102,7 @@ function StreamUpload (options) {
     const __checkFileType = function (type) {
         if (that.settings.allowedTypes && that.settings.allowedTypes.length) {
             for (let i = 0; i < that.settings.allowedTypes.length; i++) {
-                const exp = new RegExp(that.settings.allowedTypes[i]);
+                const exp = new RegExp(that.settings.allowedTypes[i].replace('+','\\+').replace('.','\\.'));
                 if (exp.test(type)) {
                     return true;
                 }
