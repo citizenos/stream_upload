@@ -6,6 +6,7 @@ const _ = require('underscore');
 const uuid = require('uuid');
 const path = require('path');
 const fs = require('fs');
+const fsPromises = require('fs/promises');
 const fsExt = require('fs-extra');
 
 /**
@@ -28,7 +29,9 @@ function StreamUpload (options) {
     const __parseExtensions = function () {
         that.settings.allowedExt.forEach(function (ext) {
             const fileType = mime.lookup(ext);
-            that.settings.allowedTypes.push(fileType);
+            if (fileType) {
+                that.settings.allowedTypes.push(fileType);
+            }
         });
         _.uniq(that.settings.allowedTypes);
     };
@@ -181,9 +184,9 @@ function StreamUpload (options) {
             s3
                 .deleteObject({Key: that.filename})
         } else {
-          if (fs.existsSync(that.filename)) {
-            fs.unlink(that.filename);
-          }
+            if (fs.existsSync(that.filename)) {
+                fs.unlink(that.filename);
+            }
         }
     }
 
