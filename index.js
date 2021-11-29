@@ -102,7 +102,11 @@ function StreamUpload (options) {
         __init(options);
     }
 
-    const __checkFileType = function (type) {
+    const __checkFileType = function (type, name) {
+        const fileType = mime.lookup(path.extname(name));
+        if (fileType !== type) {
+            return false;
+        }
         if (that.settings.allowedTypes && that.settings.allowedTypes.length) {
             for (let i = 0; i < that.settings.allowedTypes.length; i++) {
                 const exp = new RegExp(that.settings.allowedTypes[i].replace('+','\\+').replace('.','\\.'));
@@ -130,7 +134,7 @@ function StreamUpload (options) {
 
         const fileSizeValid = __checkFileSize(that.size);
         if (fileSizeValid === true) {
-            const fileTypeValid = __checkFileType(fileParams.type);
+            const fileTypeValid = __checkFileType(fileParams.type, fileParams.filename);
             if (!fileTypeValid) {
                 error = new Error('File type ' + fileParams.type + ' is invalid');
                 error.type = 'fileType';
