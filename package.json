@@ -33,6 +33,9 @@
     "eslint": "^8.2.0",
     "mocha": "^9.1.3"
   },
+  "eslintConfig": {
+    "root": true
+  },
   "directories": {
     "test": "test"
   }

@@ -6,8 +6,8 @@ const _ = require('underscore');
 const uuid = require('uuid');
 const path = require('path');
 const fs = require('fs');
-const fsPromises = require('fs/promises');
 const fsExt = require('fs-extra');
+const {finished} = require('stream');
 
 /**
  *
@@ -15,7 +15,8 @@ const fsExt = require('fs-extra');
  * @returns {object} Instance of StreamUpload
  */
 function StreamUpload (options) {
-    let that = this;
+
+    const that = this;
 
     that.settings = {
         allowedExt: [],
@@ -103,52 +104,55 @@ function StreamUpload (options) {
     }
 
     const __checkFileType = function (type, name) {
+        const error = new Error('File type ' + type + ' is invalid');
+        error.type = 'fileType';
+        error.statusCode = 403;
+
         const fileType = mime.lookup(path.extname(name));
         if (fileType !== type) {
-            return false;
+            throw error;
         }
         if (that.settings.allowedTypes && that.settings.allowedTypes.length) {
             for (let i = 0; i < that.settings.allowedTypes.length; i++) {
-                const exp = new RegExp(that.settings.allowedTypes[i].replace('+','\\+').replace('.','\\.'));
+                const exp = new RegExp(that.settings.allowedTypes[i].replace('+', '\\+').replace('.', '\\.'));
                 if (exp.test(type)) {
                     return true;
                 }
             }
 
-            return false;
+
+            throw error;
         }
 
         return true;
     };
 
-    const __checkFileSize = function (size) {
+    const __checkFileSize = function () {
         if (that.settings.maxSize) {
-            return size <= that.settings.maxSize;
+            return that.size <= that.settings.maxSize;
         }
 
         return true;
     };
 
-    const __checkFile = function (fileParams) {
-        let error;
-
-        const fileSizeValid = __checkFileSize(that.size);
-        if (fileSizeValid === true) {
-            const fileTypeValid = __checkFileType(fileParams.type, fileParams.filename);
-            if (!fileTypeValid) {
-                error = new Error('File type ' + fileParams.type + ' is invalid');
-                error.type = 'fileType';
+    const __checkSize = function (stream, outstream) {
+        stream.on('data', function (data) {
+            that.size += data.length;
+            const fileSizeValid = __checkFileSize();
+            if (fileSizeValid === true) {
+                return fileSizeValid;
+            } else {
+                const error = new Error('File size: ' + that.size + ' is invalid');
+                error.type = 'fileSize';
                 error.statusCode = 403;
+                stream.emit('error', error);
+                if (outstream) {
+                    outstream.emit('error', error);
+                }
+
                 return error;
             }
-
-            return fileTypeValid;
-        } else {
-            error = new Error('File size: ' + that.size + ' is invalid');
-            error.type = 'fileSize';
-            error.statusCode = 403;
-            return error;
-        }
+        });
     };
 
     const __uploadToS3 = async function (inputStream) {
@@ -156,29 +160,36 @@ function StreamUpload (options) {
         AWS.config.update(config);
         const s3 = new AWS.S3({params: {Bucket: that.settings.storage.bucket}});
 
-        return (await s3.upload({Key: that.filename, Body: inputStream, ACL: 'public-read'}).promise()).Location;
+        const link = (await s3.upload({Key: that.filename, Body: inputStream, ACL: 'public-read'}).promise()).Location;
+
+        return {
+            size: that.size,
+            filename: link
+        };
     };
 
-    const __uploadToLocal = async function (inputStream, params) {
+    const __uploadToLocal = function (inputStream) {
         return new Promise(function (resolve, reject) {
             // Make sure the output directory is there.
             fsExt.ensureDirSync(path.dirname(that.filename));
 
             const wr = fs.createWriteStream(that.filename);
+
+            __checkSize(inputStream, wr);
             wr.on('error', function (err) {
                 return reject(err);
             });
+
             wr.on('finish', function () {
-                return resolve(that.filename);
+                return resolve({
+                    size: that.size,
+                    filename: that.filename
+                });
             });
 
             inputStream.pipe(wr);
         });
     };
-
-    const __sizeGetter = function (data) {
-        that.size += data.length;
-    }
 
     const __deletePartials = function () {
         if (that.settings.storage.type && that.settings.storage.type.toLowerCase() === 's3') {
@@ -186,36 +197,35 @@ function StreamUpload (options) {
             AWS.config.update(config);
             const s3 = new AWS.S3({params: {Bucket: that.settings.storage.bucket}});
             s3
-                .deleteObject({Key: that.filename})
-        } else {
-            if (fs.existsSync(that.filename)) {
-                fs.unlink(that.filename);
-            }
+                .deleteObject({Key: that.filename});
+        } else if (fs.existsSync(that.filename)) {
+            fs.promises.unlink(that.filename);
         }
-    }
+    };
 
     const __upload = function (stream, params) {
-        let checkValid;
-        that.filename = params.filename || path.join(that.settings.baseFolder, uuid.v4());
-        if (that.settings.storage.type && that.settings.storage.type.toLowerCase() === 's3') {
-            checkValid = __checkFile(params);
-        } else {
-            stream.on('data', __sizeGetter);
-            checkValid = __checkFile(params);
-            stream.removeListener('data', __sizeGetter);
-        }
+        try {
+            __checkFileType(params.type, params.filename);
+            that.filename = params.filename || path.join(that.settings.baseFolder, uuid.v4());
+            finished(stream, (err) => {
+                if (err) {
+                    __deletePartials(params);
 
-        if (checkValid === true) {
+                    return Promise.reject(err);
+                }
+            });
+            that.size = 0;
             if (that.settings.storage.type && that.settings.storage.type.toLowerCase() === 's3') {
                 return __uploadToS3(stream, params);
-            } else {
-                return __uploadToLocal(stream, params);
             }
-        } else {
+
+            return __uploadToLocal(stream, params);
+        } catch (err) {
             __deletePartials(params);
 
-            return stream.emit('error', checkValid);
+            return Promise.reject(err);
         }
+
     };
 
     return {
@@ -226,7 +236,6 @@ function StreamUpload (options) {
         setTypes: __setTypes,
         setMaxSize: __setMaxSize,
         setStorage: __setStorage,
-        checkFile: __checkFile,
         checkFileSize: __checkFileSize,
         checkFileType: __checkFileType,
         deletePartials: __deletePartials
@@ -234,4 +243,3 @@ function StreamUpload (options) {
 }
 
 module.exports = StreamUpload;
-
