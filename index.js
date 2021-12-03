@@ -221,6 +221,7 @@ function StreamUpload (options) {
 
             return __uploadToLocal(stream, params);
         } catch (err) {
+            stream.emit('error', err);
             __deletePartials(params);
 
             return Promise.reject(err);
