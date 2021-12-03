@@ -156,17 +156,20 @@ function StreamUpload (options) {
     };
 
     const __uploadToS3 = async function (inputStream) {
-        const config = {accessKeyId: that.settings.storage.accessKeyId, secretAccessKey: that.settings.storage.secretAccessKey, region: that.settings.storage.region};
-        AWS.config.update(config);
-        __checkSize(inputStream);
-        const s3 = new AWS.S3({params: {Bucket: that.settings.storage.bucket}});
+        try {
+            const config = {accessKeyId: that.settings.storage.accessKeyId, secretAccessKey: that.settings.storage.secretAccessKey, region: that.settings.storage.region};
+            AWS.config.update(config);
+            const s3 = new AWS.S3({params: {Bucket: that.settings.storage.bucket}});
 
-        const link = (await s3.upload({Key: that.filename, Body: inputStream, ACL: 'public-read'}).promise()).Location;
+            const link = (await s3.upload({Key: that.filename, Body: inputStream, ACL: 'public-read'}).promise()).Location;
 
-        return {
-            size: that.size,
-            filename: link
-        };
+            return {
+                size: that.size,
+                filename: link
+            };
+        } catch (err) {
+            stream.emit('error', err);
+        }
     };
 
     const __uploadToLocal = function (inputStream) {
