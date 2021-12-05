@@ -18,7 +18,6 @@ describe('Upload streams', function () {
         streamUpload = new StreamUpload({
             extensions: ['txt', 'pdf'],
             types: [],
-            maxSize: 15000,
             baseFolder: 'test',
             storage: {}
         });
@@ -50,33 +49,11 @@ describe('Upload streams', function () {
         }
     });
 
-    it('Upload to local size mismatch error', async function () {
-        const fileParams = fs.statSync(path.join(__dirname, '/testfiles/test.txt'));
-        const file = fs.createReadStream(path.join(__dirname, '/testfiles/test.txt'));
-        const filename = 'test/testRes.txt';
-        const expectedError = 'File size is invalid';
-        streamUpload.setMaxSize(1);
-
-        try {
-            await streamUpload.upload(file, {size: fileParams.size, type: 'text/plain', filename: filename});
-        } catch (err) {
-            assert(expectedError, err.message);
-
-            return;
-        }
-
-        if (fs.existsSync(filename)) {
-            deleteFile(filename);
-        }
-        assert.fail('Did not reject with an error');
-    });
-
     it('Upload to local type mismatch error pdf to txt', async function () {
         const fileParams = fs.statSync(path.join(__dirname, '/testfiles/test.pdf'));
         const file = fs.createReadStream(path.join(__dirname, '/testfiles/test.pdf'));
-        const filename = 'test/testRes.txt';
+        const filename = 'test/testRes.pdf';
         const expectedError = 'File type is invalid';
-        streamUpload.setMaxSize(1000);
 
         try {
             await streamUpload.upload(file, {size: fileParams.size, type: 'text/plain', filename: filename});
@@ -97,8 +74,6 @@ describe('Upload streams', function () {
         const file = fs.createReadStream(path.join(__dirname, '/testfiles/test.exe'));
         const filename = 'test/testRes.exe';
         const expectedError = 'File type is invalid';
-        streamUpload.setMaxSize(1000);
-
         try {
             await streamUpload.upload(file, {size: fileParams.size, type: 'text/plain', filename: filename});
         } catch (err) {
@@ -118,7 +93,6 @@ describe('Upload streams', function () {
         const file = fs.createReadStream(path.join(__dirname, '/testfiles/test.exe'));
         const filename = 'test/testRes.exe';
         const expectedError = 'File type is invalid';
-        streamUpload.setMaxSize(1000);
 
         try {
             await streamUpload.upload(file, {size: fileParams.size, type: 'application/x-msdos-program', filename: filename});
