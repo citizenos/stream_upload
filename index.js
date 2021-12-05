@@ -107,11 +107,10 @@ function StreamUpload (options) {
         __init(options);
     }
 
-    const __checkFileType = function (type, name, stream) {
+    const __checkFileType = function (type, name) {
         const fileType = mime.lookup(path.extname(name));
         if (fileType !== type) {
-            stream.unpipe();
-            stream.emit('error', new ValidationError('File type ' + type + ' is invalid', 'fileType'));
+            return false;
         } else if (that.settings.allowedTypes && that.settings.allowedTypes.length) {
             for (let i = 0; i < that.settings.allowedTypes.length; i++) {
                 const exp = new RegExp(that.settings.allowedTypes[i].replace('+', '\\+').replace('.', '\\.'));
@@ -119,8 +118,8 @@ function StreamUpload (options) {
                     return true;
                 }
             }
-            stream.unpipe();
-            stream.emit('error', new ValidationError('File type ' + type + ' is invalid', 'fileType'));
+
+            return false;
         } else {
             return true;
         }
@@ -173,15 +172,19 @@ function StreamUpload (options) {
         }
     };
 
-    const __upload = function (stream, params) {
+    const __upload =  async function (stream, params) {
         that.filename = params.filename || path.join(that.settings.baseFolder, uuid.v4());
-        __checkFileType(params.type, params.filename, stream);
-
-        if (that.settings.storage.type && that.settings.storage.type.toLowerCase() === 's3') {
-            return __uploadToS3(stream);
+        const isValid = __checkFileType(params.type, params.filename);
+        if (isValid) {
+            if (that.settings.storage.type && that.settings.storage.type.toLowerCase() === 's3') {
+                return __uploadToS3(stream);
+            } else {
+                return __uploadToLocal(stream);
+            }
         } else {
-            return __uploadToLocal(stream);
+            stream.emit('error', new ValidationError('File type ' + params.type + ' is invalid', 'fileType'));
         }
+
     };
 
     return {
