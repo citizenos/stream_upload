@@ -1,6 +1,9 @@
-'use strict';
+'use strict';;
+//const AWS = require('aws-sdk');
 
-const AWS = require('aws-sdk');
+const { Upload } = require('@aws-sdk/lib-storage');
+const { S3 } = require('@aws-sdk/client-s3');
+
 const mime = require('mime-types');
 const _ = require('underscore');
 const uuid = require('uuid');
@@ -127,10 +130,18 @@ function StreamUpload (options) {
 
     const __uploadToS3 = function (inputStream) {
         const config = {accessKeyId: that.settings.storage.accessKeyId, secretAccessKey: that.settings.storage.secretAccessKey, region: that.settings.storage.region};
-        AWS.config.update(config);
-        var params = {Key: that.filename, Body: inputStream, ACL: 'public-read'};
-        const s3 = new AWS.S3({params: {Bucket: that.settings.storage.bucket}});
-        var upload = s3.upload(params);
+      //  AWS.config.update(config);
+        const params = {Key: that.filename, Body: inputStream, ACL: 'public-read'};
+        const s3 = new S3({
+            // The transformation for params is not implemented.
+            // Refer to UPGRADING.md on aws-sdk-js-v3 for changes needed.
+            // Please create/upvote feature request on aws-sdk-js-codemod for params.
+            params: {Bucket: that.settings.storage.bucket}
+        });
+        const upload = new Upload({
+            client: s3,
+            params
+        });
 
         return upload
             .promise()
@@ -164,7 +175,12 @@ function StreamUpload (options) {
         if (that.settings.storage.type && that.settings.storage.type.toLowerCase() === 's3') {
             const config = {accessKeyId: that.settings.storage.accessKeyId, secretAccessKey: that.settings.storage.secretAccessKey, region: that.settings.storage.region};
             AWS.config.update(config);
-            const s3 = new AWS.S3({params: {Bucket: that.settings.storage.bucket}});
+            const s3 = new S3({
+                // The transformation for params is not implemented.
+                // Refer to UPGRADING.md on aws-sdk-js-v3 for changes needed.
+                // Please create/upvote feature request on aws-sdk-js-codemod for params.
+                params: {Bucket: that.settings.storage.bucket}
+            });
             s3
                 .deleteObject({Key: that.filename});
         } else if (fs.existsSync(that.filename)) {
