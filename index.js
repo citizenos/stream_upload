@@ -2,7 +2,7 @@
 //const AWS = require('aws-sdk');
 
 const { Upload } = require('@aws-sdk/lib-storage');
-const { S3 } = require('@aws-sdk/client-s3');
+const { DeleteObjectCommand, S3Client } = require('@aws-sdk/client-s3');
 
 const mime = require('mime-types');
 const _ = require('underscore');
@@ -12,7 +12,7 @@ const fs = require('fs');
 const fsExt = require('fs-extra');
 
 class ValidationError extends Error {
-    constructor (message, type) {
+    constructor(message, type) {
         super(message);
 
         // assign the error class name in your custom error (as a shortcut)
@@ -30,7 +30,7 @@ class ValidationError extends Error {
  * @param {object} options settings for upload
  * @returns {object} Instance of StreamUpload
  */
-function StreamUpload (options) {
+function StreamUpload(options) {
 
     const that = this;
 
@@ -128,29 +128,28 @@ function StreamUpload (options) {
         }
     };
 
-    const __uploadToS3 = function (inputStream) {
-        const config = {accessKeyId: that.settings.storage.accessKeyId, secretAccessKey: that.settings.storage.secretAccessKey, region: that.settings.storage.region};
-      //  AWS.config.update(config);
-        const params = {Key: that.filename, Body: inputStream, ACL: 'public-read'};
-        const s3 = new S3({
-            // The transformation for params is not implemented.
-            // Refer to UPGRADING.md on aws-sdk-js-v3 for changes needed.
-            // Please create/upvote feature request on aws-sdk-js-codemod for params.
-            params: {Bucket: that.settings.storage.bucket}
-        });
+    const __uploadToS3 = async function (inputStream) {
+        const config = {
+            credentials: {
+                accessKeyId: that.settings.storage.accessKeyId,
+                secretAccessKey: that.settings.storage.secretAccessKey
+            },
+            region: that.settings.storage.region
+        };
+        //  AWS.config.update(config);
+        //  AWS.config.update(config);
+        const params = { Key: that.filename, Bucket: that.settings.storage.bucket, Body: inputStream, ACL: 'public-read' };
+        const s3Client = new S3Client(config);
         const upload = new Upload({
-            client: s3,
+            client: s3Client,
             params
         });
+        const data = await upload.done();
 
-        return upload
-            .promise()
-            .then(function (data) {
-                return {
-                    size: that.size,
-                    filename: data.Location
-                };
-            });
+        return {
+            size: that.size,
+            filename: data.Location
+        };
     };
 
     const __uploadToLocal = function (inputStream) {
@@ -173,29 +172,35 @@ function StreamUpload (options) {
 
     const __deletePartials = function () {
         if (that.settings.storage.type && that.settings.storage.type.toLowerCase() === 's3') {
-            const config = {accessKeyId: that.settings.storage.accessKeyId, secretAccessKey: that.settings.storage.secretAccessKey, region: that.settings.storage.region};
-            AWS.config.update(config);
-            const s3 = new S3({
-                // The transformation for params is not implemented.
-                // Refer to UPGRADING.md on aws-sdk-js-v3 for changes needed.
-                // Please create/upvote feature request on aws-sdk-js-codemod for params.
-                params: {Bucket: that.settings.storage.bucket}
-            });
-            s3
-                .deleteObject({Key: that.filename});
+            const config = {
+                credentials: {
+                    accessKeyId: that.settings.storage.accessKeyId,
+                    secretAccessKey: that.settings.storage.secretAccessKey
+                },
+                region: that.settings.storage.region
+            };
+            const s3Client = new S3Client(config);
+            const deleteCommand = new DeleteObjectCommand({ Key: that.filename, Bucket: that.settings.storage.bucket });
+            s3Client
+                .send(deleteCommand);
         } else if (fs.existsSync(that.filename)) {
             fs.promises.unlink(that.filename);
         }
     };
 
-    const __upload =  async function (stream, params) {
+    const __upload = async function (stream, params) {
         that.filename = params.filename || path.join(that.settings.baseFolder, uuid.v4());
         const isValid = __checkFileType(params.type, params.filename);
         if (isValid) {
-            if (that.settings.storage.type && that.settings.storage.type.toLowerCase() === 's3') {
-                return __uploadToS3(stream);
-            } else {
-                return __uploadToLocal(stream);
+            try {
+                if (that.settings.storage.type && that.settings.storage.type.toLowerCase() === 's3') {
+                    return await __uploadToS3(stream);
+                } else {
+                    return __uploadToLocal(stream);
+                }
+            } catch (err) {
+                console.log('ERROR', err);
+                stream.emit('error', err);
             }
         } else {
             stream.emit('error', new ValidationError('File type ' + params.type + ' is invalid', 'fileType'));
